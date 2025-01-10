@@ -63,6 +63,7 @@ func main() {
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
 	cmds.register("reset", handlerReset)
+	cmds.register("users", handlerUsers)
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
@@ -133,5 +134,20 @@ func handlerReset(s *state, cmd command) error {
 	}
 
 	fmt.Println("All user records have been delete")
+	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("couldn't delete all user records: %w", err)
+	}
+	for _, user := range users {
+		message := "* " + user.Name
+		if user.Name == s.cfg.CurrentUserName {
+			message += " (current)"
+		}
+		fmt.Println(message)
+	}
 	return nil
 }
