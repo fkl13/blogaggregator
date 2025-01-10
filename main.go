@@ -1,14 +1,23 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"os"
+	"time"
 
 	"github.com/fkl13/boot.dev/blogaggregator/internal/config"
+	"github.com/fkl13/boot.dev/blogaggregator/internal/database"
+	"github.com/google/uuid"
+
+	_ "github.com/lib/pq"
 )
 
 type state struct {
 	cfg *config.Config
+	db  *database.Queries
 }
 
 type command struct {
@@ -39,29 +48,32 @@ func main() {
 		return
 	}
 
-	s := &state{cfg: &cfg}
+	db, err := sql.Open("postgres", cfg.DbURL)
+	if err != nil {
+		log.Fatalf("could not open database connection: %v\n", err)
+	}
+	defer db.Close()
+
+	dbQueries := database.New(db)
+	s := &state{
+		cfg: &cfg,
+		db:  dbQueries,
+	}
 	cmds := commands{cmdMap: map[string]func(*state, command) error{}}
 	cmds.cmdMap["login"] = handlerLogin
+	cmds.cmdMap["register"] = handlerRegister
 
-	if len(os.Args) < 3 {
-		fmt.Println("Too few arguments")
-		os.Exit(1)
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: cli <command> [args...]")
+		return
 	}
 
-	cmd := command{
-		name:      os.Args[1],
-		arguments: os.Args[2:],
+	cmdName := os.Args[1]
+	cmdArgs := os.Args[2:]
+	err = cmds.run(s, command{name: cmdName, arguments: cmdArgs})
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	if cmd.name == "login" {
-		err := cmds.cmdMap["login"](s, cmd)
-		if err != nil {
-			fmt.Printf("Command %s failed\n", cmd.name)
-			return
-		}
-	}
-
-	fmt.Println(s.cfg)
 }
 
 func handlerLogin(s *state, cmd command) error {
@@ -69,10 +81,46 @@ func handlerLogin(s *state, cmd command) error {
 		return fmt.Errorf("usage: %s <name>", cmd.name)
 	}
 
-	err := s.cfg.SetUser(cmd.arguments[0])
+	username := cmd.arguments[0]
+
+	_, err := s.db.GetUser(context.Background(), username)
+	if err != nil {
+		return fmt.Errorf("couldn't find user: %w", err)
+	}
+
+	err = s.cfg.SetUser(username)
 	if err != nil {
 		return fmt.Errorf("couldn't set current user: %w", err)
 	}
+
+	fmt.Println("User switched successfully!")
+	return nil
+}
+
+func handlerRegister(s *state, cmd command) error {
+	if len(cmd.arguments) != 1 {
+		return fmt.Errorf("usage: %s <name>", cmd.name)
+	}
+
+	username := cmd.arguments[0]
+	args := database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      username,
+	}
+	user, err := s.db.CreateUser(context.Background(), args)
+	if err != nil {
+		return fmt.Errorf("couldn't create user: %w", err)
+	}
+
+	err = s.cfg.SetUser(user.Name)
+	if err != nil {
+		return fmt.Errorf("couldn't set current user: %w", err)
+	}
+
+	fmt.Println("User has been created")
+	fmt.Println(user)
 
 	return nil
 }
