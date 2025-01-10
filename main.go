@@ -60,8 +60,9 @@ func main() {
 		db:  dbQueries,
 	}
 	cmds := commands{cmdMap: map[string]func(*state, command) error{}}
-	cmds.cmdMap["login"] = handlerLogin
-	cmds.cmdMap["register"] = handlerRegister
+	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
+	cmds.register("reset", handlerReset)
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
@@ -122,5 +123,15 @@ func handlerRegister(s *state, cmd command) error {
 	fmt.Println("User has been created")
 	fmt.Println(user)
 
+	return nil
+}
+
+func handlerReset(s *state, cmd command) error {
+	err := s.db.DeleteUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("couldn't delete all user records: %w", err)
+	}
+
+	fmt.Println("All user records have been delete")
 	return nil
 }
