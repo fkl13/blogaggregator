@@ -69,6 +69,7 @@ func main() {
 	cmds.register("feeds", handlerListFeeds)
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerListFeedFollows))
+	cmds.register("unfollow", middlewareLoggedIn(handlerDeleteFeedFollows))
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
@@ -227,7 +228,7 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 
 	feed, err := s.db.GetFeedByURL(context.Background(), cmd.arguments[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't get feed: %w", err)
 	}
 
 	args := database.CreateFeedFollowParams{
@@ -251,7 +252,7 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 func handlerListFeedFollows(s *state, cmd command, user database.User) error {
 	feeds, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
-		return fmt.Errorf("couldn't get feeds: %w", err)
+		return fmt.Errorf("couldn't get feed follows: %w", err)
 	}
 
 	if len(feeds) == 0 {
@@ -262,5 +263,28 @@ func handlerListFeedFollows(s *state, cmd command, user database.User) error {
 	for _, feed := range feeds {
 		fmt.Printf("* %s\n", feed.FeedName)
 	}
+	return nil
+}
+
+func handlerDeleteFeedFollows(s *state, cmd command, user database.User) error {
+	if len(cmd.arguments) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.name)
+	}
+
+	feed, err := s.db.GetFeedByURL(context.Background(), cmd.arguments[0])
+	if err != nil {
+		return fmt.Errorf("couldn't get feed: %w", err)
+	}
+
+	params := database.DeleteFeedFollowsForUserParams{
+		FeedID: feed.ID,
+		UserID: user.ID,
+	}
+	err = s.db.DeleteFeedFollowsForUser(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("couldn't delete feed follow: %w", err)
+	}
+
+	fmt.Printf("%s unfollowed successfully!\n", feed.Name)
 	return nil
 }
