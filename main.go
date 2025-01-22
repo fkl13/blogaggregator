@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/fkl13/boot.dev/blogaggregator/internal/config"
@@ -70,6 +71,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerListFeedFollows))
 	cmds.register("unfollow", middlewareLoggedIn(handlerDeleteFeedFollows))
+	cmds.register("browse", middlewareLoggedIn(handlerBrowseFeed))
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
@@ -295,5 +297,35 @@ func handlerDeleteFeedFollows(s *state, cmd command, user database.User) error {
 	}
 
 	fmt.Printf("%s unfollowed successfully!\n", feed.Name)
+	return nil
+}
+
+func handlerBrowseFeed(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.arguments) == 1 {
+		if passedLimit, err := strconv.Atoi(cmd.arguments[0]); err != nil {
+			limit = passedLimit
+		} else {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+	}
+
+	params := database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	}
+	posts, err := s.db.GetPostsForUser(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("couldn't get posts: %w", err)
+	}
+
+	fmt.Printf("Found %d posts\n", len(posts))
+	for _, post := range posts {
+		fmt.Printf("%s from %s\n", post.PublishedAt.Time.Format("Mon Jan 2"), post.FeedName)
+		fmt.Printf("%s\n", post.Title)
+		fmt.Printf("    %v\n", post.Description)
+		fmt.Printf("Link: %s\n", post.Url)
+		fmt.Println("=====================================")
+	}
 	return nil
 }

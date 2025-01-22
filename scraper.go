@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"log"
+	"strings"
+	"time"
+
+	"github.com/fkl13/boot.dev/blogaggregator/internal/database"
+	"github.com/google/uuid"
 )
 
 func scrapeFeeds(s *state) {
@@ -26,6 +31,30 @@ func scrapeFeeds(s *state) {
 	}
 
 	for _, item := range feed.Channel.Item {
-		fmt.Println(item.Title)
+		pubDate := sql.NullTime{}
+		if t, err := time.Parse(time.RFC822, item.PubDate); err == nil {
+			pubDate.Time = t
+			pubDate.Valid = true
+		}
+
+		params := database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+			Title:       item.Title,
+			Description: item.Description,
+			Url:         nextFeed.Url,
+			PublishedAt: pubDate,
+			FeedID:      nextFeed.ID,
+		}
+		_, err := s.db.CreatePost(context.Background(), params)
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				continue
+			}
+			log.Printf("Couldn't create post: %v", err)
+			continue
+		}
 	}
+	log.Printf("Fetched feed %s\n", nextFeed.Name)
 }
